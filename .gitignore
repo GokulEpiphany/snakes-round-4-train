@@ -1,1 +1,6 @@
 data/*
+logs/*
+*.npz
+*.pth
+*.zip
+*.pth.tar
