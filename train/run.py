@@ -43,9 +43,9 @@ def run():
     tv.transforms.ToTensor(),
     tv.transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5)),
     ])
-  given_df = pd.read_csv(AICROWD_TEST_METADATA,PATH)
+  given_df = pd.read_csv(AICROWD_TEST_METADATA_PATH)
 
-  valid_set = SnakeDataset(AICROWD_TEST_IMAGES_PATH,is_train=False,transform=valid_tx,target_transform=None,csv_file=validate_csv_file) # verify
+  valid_set = SnakeDataset(AICROWD_TEST_IMAGES_PATH,is_train=False,transform=valid_tx,target_transform=None,csv_file=AICROWD_TEST_METADATA_PATH) # verify
   valid_loader = torch.utils.data.DataLoader(
   valid_set,batch_size=32,shuffle=False,num_workers=0,pin_memory=True,drop_last=False)
   model = models.KNOWN_MODELS['BiT-M-R50x1'](head_size= len(VALID_SNAKE_SPECIES),zero_head=True)
@@ -57,7 +57,7 @@ def run():
   model = model.to(device)
   model.eval()
   results = np.empty((0,783),float)
-  for b,(x,y) in enumerate(data_loader): #add name to dataset, y must be some random label
+  for b,(x,y) in enumerate(valid_loader): #add name to dataset, y must be some random label
     with torch.no_grad():
       x = x.to(device,non_blocking=True)
       y = y.to(device,non_blocking=True)
@@ -66,7 +66,7 @@ def run():
       probs = softmax_op(logits)
       data_to_save = probs.data.cpu().numpy()
       results = np.concatenate((results,data_to_save),axis=0)
-  filenames = given_df[['hashed_id']]
+  filenames = given_df['hashed_id'].tolist()
   country_prob = pd.read_csv(pjoin('metadata','probability_of_species_per_country.csv'))
   country_name = country_prob[['Species/Country']]
   country_dict = {name[0]:i for i,name in enumerate(country_name.values)}
@@ -83,7 +83,7 @@ def run():
       country_now = country_list[i]
       country_location = country_dict[country_now]
       country_prob_per_this_country = country_prob.loc[[country_location]].values[0][1:]
-      adjusted = country_prob_per_this_country * probs.values.T
+      adjusted = country_prob_per_this_country * probs
       adjusted_results.append(adjusted) # verify, we need list of list
     except:
       adjusted_results.append(probs)

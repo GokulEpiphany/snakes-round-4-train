@@ -21,7 +21,7 @@ class SnakeDataset(VisionDataset):
     if self.train:
       img_pth = os.path.join(root,'train_images')
     else:
-      img_pth = os.path.join(root,'validate_images')
+      img_pth = os.path.join(root)
     csv_file = pd.read_csv(csv_file,low_memory=False)
     self.hashed_ids = csv_file['hashed_id']
     given_classes = csv_file['scientific_name']
