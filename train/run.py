@@ -48,7 +48,7 @@ def run():
   valid_set = SnakeDataset(AICROWD_TEST_IMAGES_PATH,is_train=False,transform=valid_tx,target_transform=None,csv_file=validate_csv_file) # verify
   valid_loader = torch.utils.data.DataLoader(
   valid_set,batch_size=32,shuffle=False,num_workers=0,pin_memory=True,drop_last=False)
-  model = models.KNOWN_MODELS['BiT-M-50x1'](head_size= len(VALID_SNAKE_SPECIES),zero_head=True)
+  model = models.KNOWN_MODELS['BiT-M-R50x1'](head_size= len(VALID_SNAKE_SPECIES),zero_head=True)
   model = torch.nn.DataParallel(model)
   optim = torch.optim.SGD(model.parameters(),lr=0.003,momentum=0.9)
   model_loc = pjoin('models','initial.pth.tar')
@@ -67,10 +67,33 @@ def run():
       data_to_save = probs.data.cpu().numpy()
       results = np.concatenate((results,data_to_save),axis=0)
   filenames = given_df[['hashed_id']]
-  df = pd.DataFrame(data=results,index=flat_filenames,columns=VALID_SNAKE_SPECIES)
+  country_prob = pd.read_csv(pjoin('metadata','probability_of_species_per_country.csv'))
+  country_name = country_prob[['Species/Country']]
+  country_dict = {name[0]:i for i,name in enumerate(country_name.values)}
+  given_country = given_df[['country']]
+  country_list = []
+  for country in given_country.values:
+    country_list.append(str(country[0]).lower().replace(' ','-'))# has to be a better way
+  adjusted_results = []
+  
+  for i,result in enumerate(results):
+    probs = result
+    assert len(prob) == 783
+    try:
+      country_now = country_list[i]
+      country_location = country_dict[country_now]
+      country_prob_per_this_country = country_prob.loc[[country_location]].values[0][1:]
+      adjusted = country_prob_per_this_country * probs.values.T
+      adjusted_results.append(adjusted) # verify, we need list of list
+    except:
+      adjusted_results.append(probs)
+  assert len(adjusted_results) == len(results)
+  #normalize
+  normalized_results = adjusted_results/adjusted_results.sum(axis=1)[:,None]
+
+  df = pd.DataFrame(data=normalized_results,index=filenames,columns=VALID_SNAKE_SPECIES)
   df.index.name='hashed_id'
-
-
+  pd.to_csv(AICROWD_PREDICTIONS_OUTPUT_PATH,index=True)
 
   aicrowd_helpers.execution_success({
     "predictions_output_path": AICROWD_PREDICTIONS_OUTPUT_PATH
