@@ -41,6 +41,7 @@ class SnakeDataset(VisionDataset):
     if self.transform is not None:
       sample = self.transform(img)
     target = self.labels[index]
+    filename = self.hashed_ids[index]
     return sample,target
 
   def __len__(self):

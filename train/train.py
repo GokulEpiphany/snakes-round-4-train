@@ -252,19 +252,23 @@ def main(args):
 
         # Run evaluation and save the model.
         if args.eval_every and step % args.eval_every == 0:
+          logger.info(f"Saving model")
           run_eval(model, valid_loader, device, chrono, logger, step)
-          if args.save:
-            torch.save({
-                "step": step,
-                "model": model.state_dict(),
-                "optim" : optim.state_dict(),
-            }, savename)
+          torch.save({
+              "step": step,
+              "model": model.state_dict(),
+              "optim" : optim.state_dict(),
+          }, savename)
 
       end = time.time()
-
     # Final eval at end of training.
     run_eval(model, valid_loader, device, chrono, logger, step='end')
 
+    torch.save({
+      "step": step,
+      "model": model.state_dict(),
+      "optim" : optim.state_dict(),
+      }, savename)
   logger.info(f"Timings:\n{chrono}")
 
 
