@@ -52,6 +52,7 @@ def mktrainval(args, logger):
       tv.transforms.Resize((precrop, precrop)),
       tv.transforms.RandomCrop((crop, crop)),
       tv.transforms.RandomHorizontalFlip(),
+      tv.transforms.RandomRotation(90),
       tv.transforms.ToTensor(),
       tv.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
   ])
@@ -174,15 +175,21 @@ def main(args):
   optim = torch.optim.SGD(model.parameters(), lr=0.003, momentum=0.9)
 
   # Resume fine-tuning if we find a saved model.
-  savename = pjoin(args.logdir, args.name, "bit.pth.tar")
+  #savename = pjoin(args.logdir, args.name, "bit.pth.tar")
+  savename = pjoin('models','bit.pth.tar')
   try:
     logger.info(f"Model will be saved in '{savename}'")
     checkpoint = torch.load(savename, map_location="cpu")
     logger.info(f"Found saved model to resume from at '{savename}'")
 
-    step = checkpoint["step"]
+    #step = checkpoint["step"]
+    step = 1000
     model.load_state_dict(checkpoint["model"])
     optim.load_state_dict(checkpoint["optim"])
+    for state in optim.state.values():
+      for k,v in state.items():
+        if torch.is_tensor(v):
+          state[k] = v.cuda()
     logger.info(f"Resumed at step {step}")
   except FileNotFoundError:
     logger.info("Fine-tuning from BiT")
@@ -191,7 +198,8 @@ def main(args):
   optim.zero_grad()
 
   model.train()
-  mixup = bit_hyperrule.get_mixup(len(train_set))
+  #mixup = bit_hyperrule.get_mixup(0) # Disable mixup
+  mixup = 0.0
   cri = torch.nn.CrossEntropyLoss().to(device)
 
   logger.info("Starting training!")
@@ -234,6 +242,7 @@ def main(args):
       # Accumulate grads
       with chrono.measure("grads"):
         (c / args.batch_split).backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(),10.0)
         accum_steps += 1
 
       accstep = f" ({accum_steps}/{args.batch_split})" if args.batch_split > 1 else ""
