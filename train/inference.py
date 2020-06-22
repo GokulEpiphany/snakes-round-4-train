@@ -95,7 +95,7 @@ def main(args):
   model = torch.nn.DataParallel(model)
   step = 0
   optim = torch.optim.SGD(model.parameters(),lr=0.003,momentum=0.9)
-  savename = pjoin(args.logdir,args.name,"bit.pth.tar")
+  savename = pjoin('models',"rotation_augmentated.pth.tar")
   checkpoint = torch.load(savename,map_location="cpu")
   model.load_state_dict(checkpoint["model"])
   model = model.to(device)

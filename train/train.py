@@ -30,6 +30,8 @@ import big_transfer.models as models
 import bit_common
 import bit_hyperrule
 from dataset import SnakeDataset
+import pandas as pd
+
 def topk(output, target, ks=(1,)):
   """Returns one boolean vector for each k, whether the target is within the output's top-k."""
   _, pred = output.topk(max(ks), 1, True, True)
@@ -53,6 +55,8 @@ def mktrainval(args, logger):
       tv.transforms.RandomCrop((crop, crop)),
       tv.transforms.RandomHorizontalFlip(),
       tv.transforms.RandomRotation(90),
+      tv.transforms.ColorJitter(),
+      tv.transforms.RandomAffine(0,scale=(1.0,2.0),shear=20),
       tv.transforms.ToTensor(),
       tv.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
   ])
@@ -95,7 +99,6 @@ def mktrainval(args, logger):
         sampler=torch.utils.data.RandomSampler(train_set, replacement=True, num_samples=micro_batch_size))
 
   return train_set, valid_set, train_loader, valid_loader
-
 
 def run_eval(model, data_loader, device, chrono, logger, step):
   # switch to evaluate mode
@@ -176,7 +179,7 @@ def main(args):
 
   # Resume fine-tuning if we find a saved model.
   #savename = pjoin(args.logdir, args.name, "bit.pth.tar")
-  savename = pjoin('models','bit.pth.tar')
+  savename = pjoin('models','rotation_augmented.pth.tar')
   try:
     logger.info(f"Model will be saved in '{savename}'")
     checkpoint = torch.load(savename, map_location="cpu")
@@ -200,7 +203,10 @@ def main(args):
   model.train()
   #mixup = bit_hyperrule.get_mixup(0) # Disable mixup
   mixup = 0.0
-  cri = torch.nn.CrossEntropyLoss().to(device)
+  df = pd.read_csv('weights.csv')
+  weights = df['weights'].tolist()
+  torch_weights = torch.Tensor(weights)
+  cri = torch.nn.CrossEntropyLoss(weight=torch_weights).to(device)
 
   logger.info("Starting training!")
   chrono = lb.Chrono()
