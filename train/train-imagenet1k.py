@@ -48,18 +48,6 @@ def recycle(iterable):
       yield i
 
 
-class LabelSmoothLoss(nn.Module):
-  def __init__(self,smoothing=0.0):
-    super(LabelSmoothLoss,self).__init__()
-    self.smoothing = smoothing
-  def forward(self,input,target):
-    log_prob = F.log_softmax(input,dim=-1)
-    weight = input.new_ones(input.size()) * self.smoothing/(input.size(-1) -1.)
-    weight.scatter_(-1,target.unsqueeze(-1),(1.-self.smoothing))
-    loss = (-weight * log_prob).sum(dim=-1).mean()
-    return loss
-
-
 def mktrainval(args, logger):
   """Returns train and validation datasets."""
   precrop, crop = bit_hyperrule.get_resolution_from_dataset(args.dataset)
@@ -67,9 +55,6 @@ def mktrainval(args, logger):
       tv.transforms.Resize((precrop, precrop)),
       tv.transforms.RandomCrop((crop, crop)),
       tv.transforms.RandomHorizontalFlip(),
-      tv.transforms.RandomRotation(90),
-      tv.transforms.ColorJitter(),
-      tv.transforms.RandomAffine(0,scale=(1.0,2.0),shear=20),
       tv.transforms.ToTensor(),
       tv.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
   ])
@@ -79,12 +64,12 @@ def mktrainval(args, logger):
       tv.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
   ])
   path = args.datadir
-
   train_csv_file = pjoin(path,'metadata','train_labels.csv')
   validate_csv_file = pjoin(path,'metadata','validate_labels.csv')
 
   train_set = SnakeDataset(path,is_train=True,transform=train_tx,target_transform=None,csv_file=train_csv_file)
   valid_set = SnakeDataset(path,is_train=False,transform=val_tx,target_transform=None,csv_file=validate_csv_file)
+
   if args.examples_per_class is not None:
     logger.info(f"Looking for {args.examples_per_class} images per class...")
     indices = fs.find_fewshot_indices(train_set, args.examples_per_class)
@@ -112,6 +97,7 @@ def mktrainval(args, logger):
         sampler=torch.utils.data.RandomSampler(train_set, replacement=True, num_samples=micro_batch_size))
 
   return train_set, valid_set, train_loader, valid_loader
+
 
 def run_eval(model, data_loader, device, chrono, logger, step):
   # switch to evaluate mode
@@ -191,21 +177,15 @@ def main(args):
   optim = torch.optim.SGD(model.parameters(), lr=0.003, momentum=0.9)
 
   # Resume fine-tuning if we find a saved model.
-  #savename = pjoin(args.logdir, args.name, "bit.pth.tar")
-  savename = pjoin('models','bit.pth.tar')
+  savename = pjoin(args.logdir, args.name, "bit.pth.tar")
   try:
     logger.info(f"Model will be saved in '{savename}'")
     checkpoint = torch.load(savename, map_location="cpu")
     logger.info(f"Found saved model to resume from at '{savename}'")
 
-    #step = checkpoint["step"]
-    step = 1000
+    step = checkpoint["step"]
     model.load_state_dict(checkpoint["model"])
     optim.load_state_dict(checkpoint["optim"])
-    for state in optim.state.values():
-      for k,v in state.items():
-        if torch.is_tensor(v):
-          state[k] = v.cuda()
     logger.info(f"Resumed at step {step}")
   except FileNotFoundError:
     logger.info("Fine-tuning from BiT")
@@ -214,10 +194,9 @@ def main(args):
   optim.zero_grad()
 
   model.train()
-  #mixup = bit_hyperrule.get_mixup(0) # Disable mixup
-  mixup = 0.0
-  #cri = torch.nn.CrossEntropyLoss().to(device)
-  cri = LabelSmoothLoss(smoothing=0.1).to(device)
+  mixup = bit_hyperrule.get_mixup(len(train_set))
+  cri = torch.nn.CrossEntropyLoss().to(device)
+
   logger.info("Starting training!")
   chrono = lb.Chrono()
   accum_steps = 0
@@ -277,23 +256,23 @@ def main(args):
 
         # Run evaluation and save the model.
         if args.eval_every and step % args.eval_every == 0:
-          logger.info(f"Saving model")
           run_eval(model, valid_loader, device, chrono, logger, step)
-          torch.save({
-              "step": step,
-              "model": model.state_dict(),
-              "optim" : optim.state_dict(),
-          }, savename)
+          if args.save:
+            torch.save({
+                "step": step,
+                "model": model.state_dict(),
+                "optim" : optim.state_dict(),
+            }, savename)
 
       end = time.time()
+    torch.save({
+    "step":step,
+    "model":model.state_dict(),
+    "optim":optim.state_dict(),
+    },savename)
     # Final eval at end of training.
     run_eval(model, valid_loader, device, chrono, logger, step='end')
 
-    torch.save({
-      "step": step,
-      "model": model.state_dict(),
-      "optim" : optim.state_dict(),
-      }, savename)
   logger.info(f"Timings:\n{chrono}")
 
 

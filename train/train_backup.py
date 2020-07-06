@@ -22,8 +22,7 @@ import time
 import numpy as np
 import torch
 import torchvision as tv
-import torch.nn as nn
-import torch.nn.functional as F
+
 import big_transfer.fewshot as fs
 import big_transfer.lbtoolbox as lb
 import big_transfer.models as models
@@ -46,18 +45,6 @@ def recycle(iterable):
   while True:
     for i in iterable:
       yield i
-
-
-class LabelSmoothLoss(nn.Module):
-  def __init__(self,smoothing=0.0):
-    super(LabelSmoothLoss,self).__init__()
-    self.smoothing = smoothing
-  def forward(self,input,target):
-    log_prob = F.log_softmax(input,dim=-1)
-    weight = input.new_ones(input.size()) * self.smoothing/(input.size(-1) -1.)
-    weight.scatter_(-1,target.unsqueeze(-1),(1.-self.smoothing))
-    loss = (-weight * log_prob).sum(dim=-1).mean()
-    return loss
 
 
 def mktrainval(args, logger):
@@ -192,7 +179,7 @@ def main(args):
 
   # Resume fine-tuning if we find a saved model.
   #savename = pjoin(args.logdir, args.name, "bit.pth.tar")
-  savename = pjoin('models','bit.pth.tar')
+  savename = pjoin('models','rotation_augmented.pth.tar')
   try:
     logger.info(f"Model will be saved in '{savename}'")
     checkpoint = torch.load(savename, map_location="cpu")
@@ -216,8 +203,11 @@ def main(args):
   model.train()
   #mixup = bit_hyperrule.get_mixup(0) # Disable mixup
   mixup = 0.0
-  #cri = torch.nn.CrossEntropyLoss().to(device)
-  cri = LabelSmoothLoss(smoothing=0.1).to(device)
+  df = pd.read_csv('weights.csv')
+  weights = df['weights'].tolist()
+  torch_weights = torch.Tensor(weights)
+  cri = torch.nn.CrossEntropyLoss(weight=torch_weights).to(device)
+
   logger.info("Starting training!")
   chrono = lb.Chrono()
   accum_steps = 0
